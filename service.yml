@@ -1,0 +1,102 @@
+service:
+  name: aac-hashivault
+  friendly_name: HashiCorp Vault
+  image_repo: hashicorp/vault
+  image_tag: 2.2.1
+  description: HashiCorp Vault — Plattform-Secrets-Management (Raft, UI)
+  icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/vault.png
+  category: Sicherheit
+  stage: prod
+  hostname: hashivault
+ports:
+- name: api
+  port: 8200
+  protocol: TCP
+config:
+  domain_name: example.com
+  generate_hostname: false
+  integrations:
+    homepage:
+      enabled: true
+    autodns:
+      enabled: true
+      create_wildcard: false
+    traefik:
+      enabled: true
+      cert_resolver: ionos
+      entrypoint: websecure
+      service_port: 8200
+  schema_version: 2
+stage_overrides:
+  prod:
+    service:
+      hostname: hashivault
+    config:
+      generate_hostname: false
+secrets: {}
+vars:
+  TZ: Europe/Berlin
+  VAULT_UI: 'true'
+  VAULT_API_ADDR: https://{{ service.hostname }}.{{ config.domain_name }}
+  VAULT_RAFT_NODE_ID: '{{ service.name }}-1'
+  VAULT_XFF_TRUSTED: 172.16.0.0/12,192.168.0.0/16
+  VAULT_DEFAULT_LEASE_TTL: 768h
+  VAULT_MAX_LEASE_TTL: 768h
+volumes:
+  vault_file:
+    description: Raft integrated storage (vault.db + raft/). THE data — back it up
+      via `vault operator raft snapshot save`.
+    uid: 100
+    gid: 1000
+  vault_logs:
+    description: File audit device target (/vault/logs/audit.log)
+    uid: 100
+    gid: 1000
+  vault_config:
+    description: Rendered config.hcl (custom_templates/files/vault_config), mounted
+      read-only
+deployment_strategy:
+  main:
+    enabled: true
+    target_stage: prod
+  dev:
+    enabled: true
+    target_stage: dev
+  test:
+    enabled: false
+    target_stage: test
+  ansible-dev:
+    enabled: true
+    target_stage: dev
+  iac-dev:
+    enabled: true
+    target_stage: dev
+  template-dev:
+    enabled: true
+    target_stage: dev
+deployments:
+  docker_compose:
+    restart_policy: unless-stopped
+    host_base_path: /export/docker
+    command:
+    - server
+    networks_to_join:
+    - secured
+    - stack_internal
+    volumes:
+    - vault_file:/vault/file
+    - vault_logs:/vault/logs
+    - vault_config:/vault/config:ro
+    environment:
+      TZ: '{{ vars.TZ }}'
+      VAULT_ADDR: http://127.0.0.1:8200
+      SKIP_SETCAP: 'true'
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q -O /dev/null 'http://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200'
+        || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

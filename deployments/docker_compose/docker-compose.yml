@@ -1,0 +1,69 @@
+services:
+  # --- Main Application Service ---
+  aac-hashivault:
+    image: "hashicorp/vault:2.2.1"
+    container_name: "aac-hashivault"
+    hostname: "hashivault"
+    restart: "unless-stopped"
+
+    command:
+      - "server"
+
+    environment:
+      TZ: "Europe/Berlin"
+      VAULT_ADDR: "http://127.0.0.1:8200"
+      SKIP_SETCAP: "true"
+
+
+    volumes:
+      - "/export/docker/aac-hashivault/vault_file:/vault/file"
+      - "/export/docker/aac-hashivault/vault_logs:/vault/logs"
+      - "/export/docker/aac-hashivault/vault_config:/vault/config:ro"
+
+    networks:
+      - interconnect
+      - secured
+      - stack_internal
+
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.aac-hashivault.rule: "Host(`hashivault.example.com`)"
+      traefik.http.routers.aac-hashivault.entrypoints: "websecure"
+      traefik.http.routers.aac-hashivault.tls: "true"
+      traefik.http.routers.aac-hashivault.tls.certresolver: "ionos"
+      traefik.docker.network: "services-secured"
+      traefik.http.services.aac-hashivault.loadbalancer.server.port: "8200"
+      traefik.http.services.aac-hashivault.loadbalancer.server.scheme: "http"
+      auto-dns.createWildcard.aac-hashivault: "false"
+      auto-dns.customDNS.aac-hashivault: "true"
+      auto-dns.customDOMAIN.aac-hashivault: "example.com"
+      auto-dns.customHost.aac-hashivault: "hashivault"
+      homepage.group: "Sicherheit"
+      homepage.name: "HashiCorp Vault"
+      homepage.href: "https://hashivault.example.com"
+      homepage.icon: "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/vault.png"
+      homepage.description: "HashiCorp Vault — Plattform-Secrets-Management (Raft, UI)"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null \u0027http://127.0.0.1:8200/v1/sys/health?standbyok=true\u0026sealedcode=200\u0026uninitcode=200\u0027 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+
+
+networks:
+  secured:
+    name: "services-secured"
+    external: true
+  exposed:
+    name: "services-exposed"
+    external: true
+  interconnect:
+    name: "docker-default"
+    external: true
+  stack_internal:
+    name: "aac-hashivault_stack_internal"
+    driver: "bridge"
+

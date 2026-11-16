@@ -1,0 +1,40 @@
+# Rendered by the aac-template-engine from service.yml — do not edit on the host.
+# Lands in /export/docker/{{ service.name }}/vault_config/config.hcl and is
+# bind-mounted read-only into /vault/config/ (the entrypoint loads the dir).
+
+ui = {{ vars.VAULT_UI }}
+
+# Unprivileged LXC: no IPC_LOCK. Also HashiCorp's recommendation for Raft
+# (BoltDB is mmapped; mlock would pin the whole database in memory).
+disable_mlock = true
+
+default_lease_ttl = "{{ vars.VAULT_DEFAULT_LEASE_TTL }}"
+max_lease_ttl     = "{{ vars.VAULT_MAX_LEASE_TTL }}"
+
+# Integrated storage. Single node today; node_id is fixed so the identity
+# survives container recreation and further nodes can `raft join` later.
+storage "raft" {
+  path    = "/vault/file"
+  node_id = "{{ vars.VAULT_RAFT_NODE_ID }}"
+}
+
+listener "tcp" {
+  address         = "0.0.0.0:8200"
+  cluster_address = "0.0.0.0:8201"
+  # TLS terminates at Traefik (services-secured network); the listener is
+  # never published on the host.
+  tls_disable = true
+
+  # Real client IPs in the audit log: trust X-Forwarded-For from Traefik only.
+  x_forwarded_for_authorized_addrs   = "{{ vars.VAULT_XFF_TRUSTED }}"
+  x_forwarded_for_reject_not_present = false
+}
+
+# api_addr: what clients get redirected to (public HTTPS name behind Traefik).
+# cluster_addr: node-to-node Raft/request-forwarding; Vault always wraps this
+# port in its own mutual TLS, hence https:// even with tls_disable above.
+api_addr     = "{{ vars.VAULT_API_ADDR }}"
+cluster_addr = "https://{{ service.name }}:8201"
+
+# Audit: enabled once via API after init (README runbook) —
+#   vault audit enable file file_path=/vault/logs/audit.log
